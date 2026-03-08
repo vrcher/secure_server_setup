@@ -226,10 +226,22 @@ if ask "11) Оптимизация TCP сети?"; then
 
 backup $SYSCTL
 
-grep -q "tcp_congestion_control=bbr" $SYSCTL || echo "net.ipv4.tcp_congestion_control=bbr" >> $SYSCTL
-grep -q "default_qdisc=fq" $SYSCTL || echo "net.core.default_qdisc=fq" >> $SYSCTL
-grep -q "tcp_fastopen=3" $SYSCTL || echo "net.ipv4.tcp_fastopen=3" >> $SYSCTL
-grep -q "disable_ipv6=1" $SYSCTL || echo "net.ipv6.conf.all.disable_ipv6=1" >> $SYSCTL
+grep -q "ip_forward = 1" $SYSCTL || echo "net.ipv4.ip_forward = 1" >> $SYSCTL
+grep -q "default_qdisc = fq" $SYSCTL || echo "net.core.default_qdisc = fq" >> $SYSCTL
+grep -q "tcp_congestion_control = bbr" $SYSCTL || echo "net.ipv4.tcp_congestion_control = bbr" >> $SYSCTL
+grep -q "nf_conntrack_max" $SYSCTL || echo "net.netfilter.nf_conntrack_max = 524288" >> $SYSCTL
+grep -q "rmem_max" $SYSCTL || echo "net.core.rmem_max = 16777216" >> $SYSCTL
+grep -q "wmem_max" $SYSCTL || echo "net.core.wmem_max = 16777216" >> $SYSCTL
+grep -q "tcp_rmem" $SYSCTL || echo "net.ipv4.tcp_rmem = 4096 87380 16777216" >> $SYSCTL
+grep -q "tcp_wmem" $SYSCTL || echo "net.ipv4.tcp_wmem = 4096 65536 16777216" >> $SYSCTL
+grep -q "tcp_mtu_probing" $SYSCTL || echo "net.ipv4.tcp_mtu_probing = 1" >> $SYSCTL
+grep -q "accept_local" $SYSCTL || echo "net.ipv4.conf.all.accept_local = 1" >> $SYSCTL
+grep -q "route_localnet" $SYSCTL || echo "net.ipv4.conf.all.route_localnet = 1" >> $SYSCTL
+grep -q "netdev_max_backlog" $SYSCTL || echo "net.core.netdev_max_backlog = 250000" >> $SYSCTL
+grep -q "tcp_slow_start_after_idle" $SYSCTL || echo "net.ipv4.tcp_slow_start_after_idle = 0" >> $SYSCTL
+grep -q "tcp_tw_reuse" $SYSCTL || echo "net.ipv4.tcp_tw_reuse = 1" >> $SYSCTL
+grep -q "tcp_max_syn_backlog" $SYSCTL || echo "net.ipv4.tcp_max_syn_backlog = 8192" >> $SYSCTL
+grep -q "somaxconn" $SYSCTL || echo "net.core.somaxconn = 65535" >> $SYSCTL
 
 sysctl -p
 
