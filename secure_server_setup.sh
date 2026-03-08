@@ -1,19 +1,19 @@
-#!/usr/bin/env bash
+#!/bin/bash
+
 set -e
 
-TIMESTAMP=$(date +%Y%m%d%H%M%S)
-
-backup_file() {
-FILE=$1
-if [ -f "$FILE" ]; then
-cp $FILE ${FILE}.bak.$TIMESTAMP
-echo "Backup created: ${FILE}.bak.$TIMESTAMP"
-fi
-}
+log() { echo -e "\e[34m[INFO]\e[0m $1"; }
+success() { echo -e "\e[32m[SUCCESS]\e[0m $1"; }
+error() { echo -e "\e[31m[ERROR]\e[0m $1"; }
 
 ask() {
-read -p "$1 (y/n): " answer
-[[ "$answer" == "y" || "$answer" == "Y" ]]
+read -p "$1 (y/n): " ans
+[[ "$ans" == "y" || "$ans" == "Y" ]]
+}
+
+backup() {
+file=$1
+cp "$file" "$file.bak.$(date +%s)"
 }
 
 if [ "$EUID" -ne 0 ]; then
@@ -21,169 +21,247 @@ echo "Запустите скрипт от root"
 exit
 fi
 
-echo "===== SERVER SECURITY SETUP ====="
+echo "==== Secure Server Setup ===="
 
-################################
-# 1 UPDATE SYSTEM
-################################
+################################################
+# 1 UPDATE
+################################################
+
 if ask "1) Обновить систему?"; then
+log "Обновляем систему"
 apt update && apt upgrade -y
+success "Система обновлена"
 fi
 
-################################
-# 2 INSTALL BASE PACKAGES
-################################
+################################################
+# 2 PACKAGES
+################################################
+
+BASE_PACKAGES="nano htop net-tools unzip ufw fail2ban nginx unattended-upgrades curl"
+
+echo "Будут установлены пакеты:"
+echo $BASE_PACKAGES
+
 if ask "2) Установить базовые пакеты?"; then
-apt install -y nano htop net-tools unzip ufw fail2ban nginx
+
+log "Установка пакетов"
+
+apt install -y $BASE_PACKAGES
+
+success "Пакеты установлены"
+
 fi
 
-################################
+################################################
 # 3 TIMEZONE
-################################
-if ask "3) Настроить таймзону?"; then
+################################################
+
+if ask "3) Установить таймзону?"; then
+
 timedatectl
-read -p "Введите таймзону (например Europe/Berlin): " TIMEZONE
-timedatectl set-timezone $TIMEZONE
-timedatectl
+
+read -p "Введите таймзону: " TZ
+
+timedatectl set-timezone "$TZ"
+
+success "Таймзона установлена: $TZ"
+
 fi
 
-################################
+################################################
 # 4 CREATE USER
-################################
+################################################
+
 if ask "4) Создать нового пользователя?"; then
 
-read -p "Введите имя пользователя: " NEWUSER
+read -p "Имя пользователя: " NEWUSER
 
 if id "$NEWUSER" &>/dev/null; then
-echo "Пользователь уже существует"
-else
 
-useradd -m -s /bin/bash $NEWUSER
+error "Пользователь уже существует"
+
+else
 
 USER_PASSWORD=$(openssl rand -base64 12)
 
+useradd -m -s /bin/bash "$NEWUSER"
+
 echo "$NEWUSER:$USER_PASSWORD" | chpasswd
 
-usermod -aG sudo $NEWUSER
+usermod -aG sudo "$NEWUSER"
 
-echo "Пользователь создан"
-
-fi
+success "Пользователь создан"
 
 fi
 
-################################
-# 5 DISABLE ROOT LOGIN
-################################
-if ask "5) Запретить вход root по SSH?"; then
+fi
 
-backup_file /etc/ssh/sshd_config
+################################################
+# ROOT PASSWORD
+################################################
 
-sed -i 's/#PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+if ask "5) Сменить пароль root?"; then
+
+ROOT_PASS=$(openssl rand -base64 12)
+
+echo "root:$ROOT_PASS" | chpasswd
+
+success "Пароль root изменен"
 
 fi
 
-################################
-# 6 CHANGE SSH PORT
-################################
-if ask "6) Изменить SSH порт?"; then
+################################################
+# SSH CONFIG
+################################################
 
-read -p "Введите новый SSH порт: " SSH_PORT
+SSH_CONFIG="/etc/ssh/sshd_config"
 
-backup_file /etc/ssh/sshd_config
+################################################
+# DISABLE ROOT LOGIN
+################################################
 
-sed -i "s/#Port 22/Port $SSH_PORT/" /etc/ssh/sshd_config
+if ask "6) Запретить вход root по SSH?"; then
+
+backup $SSH_CONFIG
+
+if grep -q "^PermitRootLogin" $SSH_CONFIG; then
+sed -i 's/^PermitRootLogin.*/PermitRootLogin no/' $SSH_CONFIG
+else
+echo "PermitRootLogin no" >> $SSH_CONFIG
+fi
+
+success "Root SSH login отключен"
 
 fi
 
-################################
-# SSH SECURITY LIMITS
-################################
-if ask "7) Ограничить попытки входа SSH?"; then
+################################################
+# CHANGE SSH PORT
+################################################
 
-backup_file /etc/ssh/sshd_config
+if ask "7) Сменить SSH порт?"; then
 
-echo "MaxAuthTries 3" >> /etc/ssh/sshd_config
-echo "LoginGraceTime 30" >> /etc/ssh/sshd_config
+read -p "Введите новый порт: " SSH_PORT
+
+backup $SSH_CONFIG
+
+if grep -q "^#Port 22" $SSH_CONFIG; then
+sed -i "s/#Port 22/Port $SSH_PORT/" $SSH_CONFIG
+elif grep -q "^Port" $SSH_CONFIG; then
+sed -i "s/^Port.*/Port $SSH_PORT/" $SSH_CONFIG
+else
+echo "Port $SSH_PORT" >> $SSH_CONFIG
+fi
+
+success "SSH порт изменен на $SSH_PORT"
 
 fi
 
-################################
+################################################
+# SSH LIMIT
+################################################
+
+if ask "8) Ограничить попытки SSH?"; then
+
+backup $SSH_CONFIG
+
+grep -q "MaxAuthTries" $SSH_CONFIG || echo "MaxAuthTries 3" >> $SSH_CONFIG
+grep -q "LoginGraceTime" $SSH_CONFIG || echo "LoginGraceTime 30" >> $SSH_CONFIG
+
+success "SSH лимиты установлены"
+
+fi
+
+################################################
 # HIDE SSH VERSION
-################################
-if ask "8) Скрыть версию SSH?"; then
+################################################
 
-backup_file /etc/ssh/sshd_config
+if ask "9) Скрыть версию SSH?"; then
 
-echo "DebianBanner no" >> /etc/ssh/sshd_config
+backup $SSH_CONFIG
+
+grep -q "DebianBanner" $SSH_CONFIG || echo "DebianBanner no" >> $SSH_CONFIG
+
+success "SSH версия скрыта"
 
 fi
 
-################################
-# RESTART SSH
-################################
+log "Перезапуск SSH"
+
 systemctl restart ssh
 
-################################
-# 9 FIREWALL
-################################
-if ask "9) Включить firewall UFW?"; then
+success "SSH перезапущен"
+
+################################################
+# FIREWALL
+################################################
+
+if ask "10) Настроить UFW firewall?"; then
 
 ufw allow 22/tcp
 
-if [ ! -z "$SSH_PORT" ]; then
-ufw allow $SSH_PORT/tcp
-fi
+[ ! -z "$SSH_PORT" ] && ufw allow $SSH_PORT/tcp
 
-ufw allow 80/tcp
-ufw allow 443/tcp
+ufw allow 80
+ufw allow 443
 
-read -p "Добавить кастомные порты (через пробел) или Enter: " PORTS
+read -p "Дополнительные порты: " PORTS
 
-for PORT in $PORTS; do
-ufw allow $PORT
+for p in $PORTS; do
+ufw allow $p
 done
 
 ufw --force enable
+
+success "Firewall включен"
+
 fi
 
-################################
-# 10 TCP OPTIMIZATION
-################################
-if ask "10) Оптимизация TCP сети?"; then
+################################################
+# TCP OPTIMIZATION
+################################################
 
-backup_file /etc/sysctl.conf
+SYSCTL="/etc/sysctl.conf"
 
-echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
-echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
-echo "net.ipv4.tcp_fastopen=3" >> /etc/sysctl.conf
-echo "net.ipv6.conf.all.disable_ipv6=1" >> /etc/sysctl.conf
+if ask "11) Оптимизация TCP сети?"; then
+
+backup $SYSCTL
+
+grep -q "tcp_congestion_control=bbr" $SYSCTL || echo "net.ipv4.tcp_congestion_control=bbr" >> $SYSCTL
+grep -q "default_qdisc=fq" $SYSCTL || echo "net.core.default_qdisc=fq" >> $SYSCTL
+grep -q "tcp_fastopen=3" $SYSCTL || echo "net.ipv4.tcp_fastopen=3" >> $SYSCTL
+grep -q "disable_ipv6=1" $SYSCTL || echo "net.ipv6.conf.all.disable_ipv6=1" >> $SYSCTL
 
 sysctl -p
 
+success "TCP оптимизация применена"
+
 fi
 
-################################
-# 11 SYN FLOOD PROTECTION
-################################
-if ask "11) Включить защиту SYN flood?"; then
+################################################
+# SYN FLOOD
+################################################
 
-backup_file /etc/sysctl.conf
+if ask "12) Включить защиту SYN flood?"; then
 
-echo "net.ipv4.tcp_syncookies = 1" >> /etc/sysctl.conf
+backup $SYSCTL
+
+grep -q "tcp_syncookies" $SYSCTL || echo "net.ipv4.tcp_syncookies=1" >> $SYSCTL
 
 sysctl -p
 
+success "SYN flood защита включена"
+
 fi
 
-################################
-# 12 DNS
-################################
-if ask "12) Настроить DNS?"; then
+################################################
+# DNS
+################################################
 
-read -p "Введите DNS (например 1.1.1.1 8.8.8.8): " DNS
+if ask "13) Настроить DNS?"; then
 
-backup_file /etc/resolv.conf
+read -p "Введите DNS (пример 1.1.1.1 8.8.8.8): " DNS
+
+backup /etc/resolv.conf
 
 > /etc/resolv.conf
 
@@ -191,22 +269,28 @@ for d in $DNS; do
 echo "nameserver $d" >> /etc/resolv.conf
 done
 
+success "DNS настроен"
+
 fi
 
-################################
-# 13 AUTO SECURITY UPDATES
-################################
-if ask "13) Включить автоматические security обновления?"; then
+################################################
+# AUTO UPDATES
+################################################
+
+if ask "14) Включить авто security обновления?"; then
 
 apt install unattended-upgrades -y
 dpkg-reconfigure -plow unattended-upgrades
 
+success "Автообновления включены"
+
 fi
 
-################################
-# 14 NGINX STUB PAGE
-################################
-if ask "14) Установить HTTP заглушку nginx?"; then
+################################################
+# NGINX STUB
+################################################
+
+if ask "15) Установить nginx заглушку?"; then
 
 mkdir -p /var/www/html
 
@@ -214,7 +298,7 @@ cat > /var/www/html/index.html <<EOF
 <html>
 <head><title>Server</title></head>
 <body>
-<h1>Server works</h1>
+<h1>Server is running</h1>
 </body>
 </html>
 EOF
@@ -222,63 +306,67 @@ EOF
 nginx -t
 systemctl restart nginx
 
+success "nginx работает"
+
 fi
 
-################################
-# 15 HIDE NGINX VERSION
-################################
-if ask "15) Скрыть версию nginx?"; then
+################################################
+# HIDE NGINX VERSION
+################################################
 
-backup_file /etc/nginx/nginx.conf
+if ask "16) Скрыть версию nginx?"; then
 
-sed -i '/http {/a server_tokens off;' /etc/nginx/nginx.conf
+backup /etc/nginx/nginx.conf
+
+grep -q "server_tokens off" /etc/nginx/nginx.conf || sed -i '/http {/a server_tokens off;' /etc/nginx/nginx.conf
 
 nginx -t
 systemctl restart nginx
 
+success "Версия nginx скрыта"
+
 fi
 
-################################
-# 16 BLOCK PING
-################################
-if ask "16) Заблокировать ping?"; then
+################################################
+# BLOCK PING
+################################################
 
-backup_file /etc/sysctl.conf
+if ask "17) Заблокировать ping?"; then
 
-echo "net.ipv4.icmp_echo_ignore_all=1" >> /etc/sysctl.conf
+backup $SYSCTL
+
+grep -q "icmp_echo_ignore_all" $SYSCTL || echo "net.ipv4.icmp_echo_ignore_all=1" >> $SYSCTL
 
 sysctl -p
 
-echo "Проверка параметра:"
-sysctl net.ipv4.icmp_echo_ignore_all
+log "Проверка ping"
 
-echo "Тест ping localhost"
-ping -c 2 127.0.0.1 || echo "Ping отключен"
+ping -c 2 127.0.0.1 || log "Ping отключен"
 
 fi
 
-################################
+################################################
 # FINAL INFO
-################################
+################################################
+
 echo
-echo "===== ДАННЫЕ СЕРВЕРА ====="
+echo "===== ДАННЫЕ ====="
 
-if [ ! -z "$NEWUSER" ]; then
-echo "Пользователь: $NEWUSER"
-echo "Пароль: $USER_PASSWORD"
-fi
+[ ! -z "$NEWUSER" ] && echo "User: $NEWUSER"
+[ ! -z "$USER_PASSWORD" ] && echo "User password: $USER_PASSWORD"
 
-if [ ! -z "$SSH_PORT" ]; then
-echo "SSH порт: $SSH_PORT"
-fi
+[ ! -z "$ROOT_PASS" ] && echo "Root password: $ROOT_PASS"
 
-echo "==========================="
+[ ! -z "$SSH_PORT" ] && echo "SSH port: $SSH_PORT"
 
-################################
+echo "=================="
+
+################################################
 # REBOOT
-################################
+################################################
+
 if ask "Перезагрузить сервер?"; then
 reboot
 else
-echo "Скрипт завершен"
+success "Скрипт завершен"
 fi
