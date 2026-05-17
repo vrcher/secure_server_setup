@@ -93,9 +93,9 @@ Backup конфигов
 Ubuntu, Debian
 
 Установка и запуск
-Через wget
+- Через wget
 - `wget -O secure.sh https://raw.githubusercontent.com/vrcher/secure_server_setup/main/secure_server_setup.sh && chmod +x secure.sh && sudo ./secure.sh`
-Через curl
+- Через curl
 - `curl -O https://raw.githubusercontent.com/vrcher/secure_server_setup/main/secure_server_setup.sh && chmod +x secure_server_setup.sh && sudo ./secure_server_setup.sh`
 
 Важно
