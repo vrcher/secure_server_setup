@@ -94,9 +94,9 @@ Ubuntu, Debian
 
 Установка и запуск
 Через wget
-wget -O secure.sh https://raw.githubusercontent.com/vrcher/secure_server_setup/main/secure_server_setup.sh && chmod +x secure.sh && sudo ./secure.sh
+- `wget -O secure.sh https://raw.githubusercontent.com/vrcher/secure_server_setup/main/secure_server_setup.sh && chmod +x secure.sh && sudo ./secure.sh`
 Через curl
-curl -O https://raw.githubusercontent.com/vrcher/secure_server_setup/main/secure_server_setup.sh && chmod +x secure_server_setup.sh && sudo ./secure_server_setup.sh
+- `curl -O https://raw.githubusercontent.com/vrcher/secure_server_setup/main/secure_server_setup.sh && chmod +x secure_server_setup.sh && sudo ./secure_server_setup.sh`
 
 Важно
 После выполнения скрипта могут измениться
