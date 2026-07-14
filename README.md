@@ -55,8 +55,6 @@ sudo ./secure_server.sh
 curl -fsSL https://raw.githubusercontent.com/vrcher/secure_server_setup/refs/heads/main/secure_server.sh | sudo bash
 ```
 
-> Замените URL на реальное расположение вашего скрипта.
-
 ---
 
 ## ⚠️ Важно перед запуском
